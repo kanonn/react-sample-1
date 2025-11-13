@@ -1,3 +1,4 @@
+import { useState, useEffect, useCallback } from 'react';
 import {
   Container,
   Paper,
@@ -11,6 +12,7 @@ import {
   FormControl,
   InputLabel,
   Chip,
+  CircularProgress,
 } from '@mui/material';
 import {
   LineChart,
@@ -30,7 +32,6 @@ import {
   Cell,
 } from 'recharts';
 import { TrendingUp, TrendingDown } from '@mui/icons-material';
-import { useState } from 'react';
 
 // 销售趋势数据（折线图）
 const salesTrendData = [
@@ -121,35 +122,92 @@ const statsCards = [
   },
 ];
 
+// 自定义 Tooltip 组件（放在组件外部）
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    return (
+      <Paper sx={{ p: 2, border: '1px solid #e0e0e0' }}>
+        <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
+          {label}
+        </Typography>
+        {payload.map((entry: any, index: number) => (
+          <Typography
+            key={index}
+            variant="body2"
+            sx={{ color: entry.color }}
+          >
+            {entry.name}: {entry.value.toLocaleString()}
+            {entry.dataKey === 'sales' && ' 元'}
+          </Typography>
+        ))}
+      </Paper>
+    );
+  }
+  return null;
+};
+
 export default function Analytics() {
   const [timeRange, setTimeRange] = useState('year');
+  const [mounted, setMounted] = useState(false);
+  const [renderKey, setRenderKey] = useState(0);
 
-  // 自定义 Tooltip
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      return (
-        <Paper sx={{ p: 2, border: '1px solid #e0e0e0' }}>
-          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
-            {label}
-          </Typography>
-          {payload.map((entry: any, index: number) => (
-            <Typography
-              key={index}
-              variant="body2"
-              sx={{ color: entry.color }}
-            >
-              {entry.name}: {entry.value.toLocaleString()}
-              {entry.dataKey === 'sales' && ' 元'}
-            </Typography>
-          ))}
-        </Paper>
-      );
+  // 组件挂载时设置延迟，确保容器渲染完成
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setMounted(true);
+    }, 50);
+
+    return () => {
+      clearTimeout(timer);
+      setMounted(false);
+    };
+  }, []);
+
+  // 强制重新渲染图表
+  useEffect(() => {
+    if (mounted) {
+      const timer = setTimeout(() => {
+        setRenderKey(prev => prev + 1);
+      }, 100);
+      return () => clearTimeout(timer);
     }
-    return null;
-  };
+  }, [mounted]);
+
+  // 处理窗口大小变化
+  useEffect(() => {
+    const handleResize = () => {
+      setRenderKey(prev => prev + 1);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const handleTimeRangeChange = useCallback((value: string) => {
+    setTimeRange(value);
+    setRenderKey(prev => prev + 1);
+  }, []);
+
+  // 加载状态
+  if (!mounted) {
+    return (
+      <Container maxWidth="xl">
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            minHeight: '60vh',
+          }}
+        >
+          <CircularProgress />
+        </Box>
+      </Container>
+    );
+  }
 
   return (
-    <Container maxWidth="xl">
+    <Container maxWidth="xl" key={`analytics-${renderKey}`}>
       {/* 页面标题和时间筛选 */}
       <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Box>
@@ -165,7 +223,7 @@ export default function Analytics() {
           <Select
             value={timeRange}
             label="时间范围"
-            onChange={(e) => setTimeRange(e.target.value)}
+            onChange={(e) => handleTimeRangeChange(e.target.value)}
           >
             <MenuItem value="week">最近一周</MenuItem>
             <MenuItem value="month">最近一月</MenuItem>
@@ -207,32 +265,34 @@ export default function Analytics() {
             <Typography variant="h6" sx={{ fontWeight: 600, mb: 3 }}>
               📈 销售趋势分析
             </Typography>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={salesTrendData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="month" />
-                <YAxis />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend />
-                <Line
-                  type="monotone"
-                  dataKey="sales"
-                  stroke="#2196f3"
-                  strokeWidth={3}
-                  name="销售额"
-                  dot={{ fill: '#2196f3', r: 4 }}
-                  activeDot={{ r: 6 }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="orders"
-                  stroke="#4caf50"
-                  strokeWidth={3}
-                  name="订单数"
-                  dot={{ fill: '#4caf50', r: 4 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
+            <Box sx={{ width: '100%', height: 300 }}>
+              <ResponsiveContainer key={`line-${renderKey}`}>
+                <LineChart data={salesTrendData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="month" />
+                  <YAxis />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend />
+                  <Line
+                    type="monotone"
+                    dataKey="sales"
+                    stroke="#2196f3"
+                    strokeWidth={3}
+                    name="销售额"
+                    dot={{ fill: '#2196f3', r: 4 }}
+                    activeDot={{ r: 6 }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="orders"
+                    stroke="#4caf50"
+                    strokeWidth={3}
+                    name="订单数"
+                    dot={{ fill: '#4caf50', r: 4 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </Box>
           </Paper>
         </Grid>
 
@@ -242,27 +302,29 @@ export default function Analytics() {
             <Typography variant="h6" sx={{ fontWeight: 600, mb: 3 }}>
               🥧 订单状态分布
             </Typography>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={orderStatusData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, percent }) =>
-                    `${name} ${(percent * 100).toFixed(0)}%`
-                  }
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {orderStatusData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
+            <Box sx={{ width: '100%', height: 300 }}>
+              <ResponsiveContainer key={`pie-${renderKey}`}>
+                <PieChart>
+                  <Pie
+                    data={orderStatusData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ name, percent }) =>
+                      `${name} ${(percent * 100).toFixed(0)}%`
+                    }
+                    outerRadius={80}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {orderStatusData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            </Box>
             <Box sx={{ mt: 2 }}>
               {orderStatusData.map((item, index) => (
                 <Box
@@ -300,41 +362,46 @@ export default function Analytics() {
             <Typography variant="h6" sx={{ fontWeight: 600, mb: 3 }}>
               📊 产品销售排行
             </Typography>
-            <ResponsiveContainer width="100%" height={350}>
-              <BarChart data={productSalesData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="product" />
-                <YAxis />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend />
-                <Bar dataKey="sales" fill="#2196f3" name="销售额" radius={[8, 8, 0, 0]} />
-                <Bar dataKey="quantity" fill="#4caf50" name="销量" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <Box sx={{ width: '100%', height: 350 }}>
+              <ResponsiveContainer key={`bar-${renderKey}`}>
+                <BarChart data={productSalesData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="product" />
+                  <YAxis />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend />
+                  <Bar dataKey="sales" fill="#2196f3" name="销售额" radius={[8, 8, 0, 0]} />
+                  <Bar dataKey="quantity" fill="#4caf50" name="销量" radius={[8, 8, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </Box>
           </Paper>
         </Grid>
-
+        
         {/* 地区销售对比 - 横向柱状图 */}
         <Grid item xs={12} lg={6}>
           <Paper sx={{ p: 3 }}>
             <Typography variant="h6" sx={{ fontWeight: 600, mb: 3 }}>
               🗺️ 地区销售对比
             </Typography>
-            <ResponsiveContainer width="100%" height={350}>
-              <BarChart data={regionSalesData} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis type="number" />
-                <YAxis dataKey="region" type="category" />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend />
-                <Bar dataKey="sales" fill="#9c27b0" name="销售额" radius={[0, 8, 8, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <Box sx={{ width: '100%', height: 350 }}>
+              <ResponsiveContainer key={`hbar-${renderKey}`}>
+                <BarChart data={regionSalesData} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis type="number" />
+                  <YAxis dataKey="region" type="category" />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend />
+                  <Bar dataKey="sales" fill="#9c27b0" name="销售额" radius={[0, 8, 8, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </Box>
             <Box sx={{ mt: 2 }}>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                 增长率排名：
               </Typography>
-              {regionSalesData
+              {/* ✅ 修复：使用数组副本进行排序 */}
+              {[...regionSalesData]
                 .sort((a, b) => b.growth - a.growth)
                 .map((item, index) => (
                   <Box
@@ -366,43 +433,45 @@ export default function Analytics() {
             <Typography variant="h6" sx={{ fontWeight: 600, mb: 3 }}>
               👥 用户增长趋势
             </Typography>
-            <ResponsiveContainer width="100%" height={300}>
-              <AreaChart data={userGrowthData}>
-                <defs>
-                  <linearGradient id="colorNew" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#2196f3" stopOpacity={0.8} />
-                    <stop offset="95%" stopColor="#2196f3" stopOpacity={0.1} />
-                  </linearGradient>
-                  <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#4caf50" stopOpacity={0.8} />
-                    <stop offset="95%" stopColor="#4caf50" stopOpacity={0.1} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="date" />
-                <YAxis />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend />
-                <Area
-                  type="monotone"
-                  dataKey="newUsers"
-                  stroke="#2196f3"
-                  strokeWidth={2}
-                  fillOpacity={1}
-                  fill="url(#colorNew)"
-                  name="新增用户"
-                />
-                <Area
-                  type="monotone"
-                  dataKey="totalUsers"
-                  stroke="#4caf50"
-                  strokeWidth={2}
-                  fillOpacity={1}
-                  fill="url(#colorTotal)"
-                  name="累计用户"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+            <Box sx={{ width: '100%', height: 300 }}>
+              <ResponsiveContainer key={`area-${renderKey}`}>
+                <AreaChart data={userGrowthData}>
+                  <defs>
+                    <linearGradient id="colorNew" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#2196f3" stopOpacity={0.8} />
+                      <stop offset="95%" stopColor="#2196f3" stopOpacity={0.1} />
+                    </linearGradient>
+                    <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#4caf50" stopOpacity={0.8} />
+                      <stop offset="95%" stopColor="#4caf50" stopOpacity={0.1} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="date" />
+                  <YAxis />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend />
+                  <Area
+                    type="monotone"
+                    dataKey="newUsers"
+                    stroke="#2196f3"
+                    strokeWidth={2}
+                    fillOpacity={1}
+                    fill="url(#colorNew)"
+                    name="新增用户"
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="totalUsers"
+                    stroke="#4caf50"
+                    strokeWidth={2}
+                    fillOpacity={1}
+                    fill="url(#colorTotal)"
+                    name="累计用户"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </Box>
           </Paper>
         </Grid>
       </Grid>
